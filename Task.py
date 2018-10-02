@@ -1,3 +1,4 @@
+import threading
 import time
 from enum import Enum
 
@@ -10,8 +11,12 @@ class State(Enum):
 
 
 class Task:
+    id_counter = 0
 
     def __init__(self, name: str, func: callable):
+        self.id = str(Task.id_counter)
+        Task.id_counter += 1
+
         self.name = name
         self.func = func
         self.state = State.WAIT
@@ -79,3 +84,12 @@ if __name__ == "__main__":
     t1.run()
     print(t1)
     print("A=", a.A)
+
+
+    def CreateTask():
+        t = Task("asdf", lambda: 2)
+        print("Task new_task_id in another thread:{}".format(t.id))
+
+
+    thread = threading.Thread(target=CreateTask)
+    thread.start()

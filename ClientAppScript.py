@@ -12,6 +12,8 @@ python ClientAppScript.py -b -c add_task -t shake_string -s 0123445
 """
 
 import argparse
+import json
+import sys
 import time
 from MyClient import MyClient
 
@@ -36,31 +38,34 @@ if args.batch:
     if args.command == "add_task" or args.command is None:
         if args.task_name and args.string:
             result_data = client.call_task(args.task_name, [args.string])
-            id = result_data.get('data', -1)
-            if id != -1:
-                print("Successfully adding a task to the queue. Task id:{}.".format(id))
+            new_task_id = result_data.get('data', -1)
+            if new_task_id != -1:
+                print("Successfully adding a task to the queue. New task id: {}.".format(new_task_id))
                 try:
-                    status = 'WORK'
+                    status = '???'
                     while status != 'COMPLETED' and status != 'ERROR':
-                        task_status_response = client.get_task_status(id)
+                        task_status_response = client.get_task_status(new_task_id)
                         try:
                             status = task_status_response['data']
+                            print("Task status is {}.".format(status))
                         except KeyError:
                             status = task_status_response['error']
+                            print("Error: {}.".format(status))
 
-                        print("Task status is {}.".format(status))
                         time.sleep(1)
                 except KeyboardInterrupt as e:
                     print("Process stopped by user.")
 
-                task_result_response = client.get_task_result(id)
+                task_result_response = client.get_task_result(new_task_id)
                 try:
                     result = task_result_response['data']
+                    print("Result is: {}".format(result))
                 except KeyError:
                     result = task_result_response['error']
-                print("Result is: {}".format(result))
+                    print("Result is unknown. Error: {}.".format(result))
+
             else:
-                print("Error adding task. Server response: {}.".format(result_data.get('error', 'unknown error')))
+                print("Error adding task: '{}'.".format(result_data.get('error', 'unknown error')))
         else:
             print("FatalError: <task_name> and <string> option is required for batch mode.")
     else:
@@ -69,37 +74,41 @@ if args.batch:
 else:
     result_msg = ""
     error_msg = ""
+
+    # check params structure
     if args.command == "add_task":
-        if args.task_name and args.string:
-            response = client.call_task(args.task_name, [args.string])
-            try:
-                result_msg = response['data']
-            except KeyError:
-                result_msg = response['error']
-        else:
+        if not (args.task_name and args.string):
             error_msg = "FatalError: <task_id> and <string> option required with add_task command."
-    elif args.command == "task_status":
-        if args.task_id:
-            response = client.get_task_status(args.task_id)
-            try:
-                result_msg = response['data']
-            except KeyError:
-                result_msg = response['error']
-        else:
-            error_msg = "FatalError: <task_id> option required with task_status command."
-    elif args.command == "task_result":
-        if args.task_id:
-            response = client.get_task_result(args.task_id)
-            try:
-                result_msg = response['data']
-            except KeyError:
-                result_msg = response['error']
-        else:
-            error_msg = "FatalError: <task_id> option required with task_result command."
+    elif args.command == "task_status" or args.command == "task_result":
+        if not args.task_id:
+            error_msg = "FatalError: <task_id> option required with task_status and task_result command."
     else:
         error_msg = "FatalError: <command> option is required."
 
+    # terminate if error
     if error_msg:
         print(error_msg)
+        sys.exit(2)
+
+    # prepare raw request
+    request = {'meta': {'method_name': args.command},
+               'data': {
+                   'task_name': args.task_name,
+                   'id': args.task_id,
+                   'string': args.string,
+                   'kwargs': {},
+                   'args': [args.string] if args.string else [],
+               }
+               }
+
+    request_json = json.dumps(request)
+    # get client response
+    response_json = client.send_data(request_json)
+
+    response = json.loads(response_json)
+    if response.get('data', False):
+        print("Server response with data: {}".format(response['data']))
     else:
-        print(result_msg)
+        print("Server response with error: {}".format(response['error']))
+
+
